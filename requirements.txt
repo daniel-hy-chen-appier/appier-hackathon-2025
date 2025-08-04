@@ -1,0 +1,6 @@
+slack-bolt 
+apscheduler
+numpy
+torch
+pandas
+transformers
