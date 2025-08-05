@@ -183,7 +183,38 @@ def handle_event_modal_submission(ack, body, client, view, logger):
     except Exception as e:
         logger.error(f"發送訊息失敗: {e}")
         return
-
+    # 傳送私訊給活動創建者，包含取消活動按鈕
+    try:
+        client.chat_postMessage(
+            channel=user_id,
+            text=f"你已建立活動：{event_name}\n活動ID: {event_id}",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"你已建立活動：*{event_name}*\n"
+                            f"活動ID: `{event_id}`"
+                        )
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "❌ 取消活動"},
+                            "style": "danger",
+                            "action_id": "cancel_event_action",
+                            "value": event_id
+                        }
+                    ]
+                }
+            ]
+        )
+    except Exception as e:
+        logger.error(f"發送創建者私訊失敗: {e}")
     # 設定排程任務，在事件結束時發送回饋請求
     # 也可以在活動開始時發送提醒
     scheduler.add_job(
@@ -244,7 +275,59 @@ def handle_join_event_action(ack, body, client, logger):
         )
     except Exception as e:
         logger.error(f"更新訊息失敗: {e}")
+@app.action("cancel_event_action")
+def handle_cancel_event_action(ack, body, client, logger):
+    ack()
+    user_id = body["user"]["id"]
+    event_id = body["actions"][0]["value"]
+    event = db["events"].get(event_id)
 
+    if not event:
+        logger.warning("找不到對應的活動")
+        return
+
+    # 僅允許活動創建者取消活動
+    if event["creator"] != user_id:
+        try:
+            client.chat_postMessage(
+                channel=user_id,
+                text="只有活動創建者可以取消活動。"
+            )
+        except Exception as e:
+            logger.error(f"通知非創建者失敗: {e}")
+        return
+
+    # 通知所有參加者活動已取消
+    for attendee_id in event["attendees"]:
+        try:
+            client.chat_postMessage(
+                channel=attendee_id,
+                text=f"很抱歉，活動「{event['name']}」已被創建者取消。"
+            )
+        except Exception as e:
+            logger.error(f"通知參加者失敗: {e}")
+
+    # 更新原頻道訊息
+    try:
+        client.chat_update(
+            channel=event["channel_id"],
+            ts=event["message_ts"],
+            text=f"活動「{event['name']}」已被取消。",
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"❌ *活動「{event['name']}」已被取消。*"
+                    }
+                }
+            ]
+        )
+    except Exception as e:
+        logger.error(f"更新活動訊息失敗: {e}")
+
+    # 從資料庫移除活動
+    db["events"].pop(event_id, None)
 @app.action("leave_event_action")
 def handle_leave_event_action(ack, body, client, logger):
     ack()
