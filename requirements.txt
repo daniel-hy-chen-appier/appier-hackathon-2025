@@ -6,3 +6,4 @@ pandas
 transformers
 python-dotenv
 pydrive
+openai
