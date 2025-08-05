@@ -6,13 +6,15 @@ import uuid
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from apscheduler.schedulers.background import BackgroundScheduler
-
+from dotenv import load_dotenv
+load_dotenv()
 # 設定日誌
 logging.basicConfig(level=logging.INFO)
 
 # 初始化 Bolt App
 # 確保你已經設定了環境變數 SLACK_BOT_TOKEN 和 SLACK_APP_TOKEN
-app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
+
+app = App(token=os.environ["SLACK_BOT_TOKEN"])
 
 # 初始化排程器
 scheduler = BackgroundScheduler(timezone="Asia/Taipei") # 建議設定時區
@@ -22,9 +24,18 @@ scheduler.start()
 # 警告：此資料庫會在程式重啟時清空。正式環境請使用真實資料庫。
 db = {
     "events": {},
-    "users":{}
 }
+@app.message("hello")
+def message_hello(message, say):
+    # say() sends a message to the channel where the event was triggered
+    say(f"Hey there <@{message['user']}>!")
 
+
+@app.command("/echo")
+def repeat_text(ack, respond, command):
+    # Acknowledge command request
+    ack()
+    respond(f"{command['text']}")
 # --- 監聽斜線命令 /create-event ---
 @app.command("/create-event")
 def handle_create_event_command(ack, body, client):
@@ -88,8 +99,8 @@ def handle_event_modal_submission(ack, body, client, view, logger):
     event_name = view["state"]["values"]["event_name_block"]["event_name_input"]["value"]
     start_time_str = view["state"]["values"]["event_start_block"]["event_start_input"]["value"]
     end_time_str = view["state"]["values"]["event_end_block"]["event_end_input"]["value"]
-    place = view["state"]["values"]["event_place_block"]["plain_text_input"]["value"] if "event_place_block" in view["state"]["values"] and "plain_text_input" in view["state"]["values"]["event_place_block"] else "None"
-    tags = view["state"]["values"]["event_tag_block"]["plain_text_input"]["value"] if "event_tag_block" in view["state"]["values"] and "plain_text_input" in view["state"]["values"]["event_tag_block"] else ""
+    place = view["state"]["values"]["event_place_block"]["event_place_input"]["value"] if "event_place_block" in view["state"]["values"] and "event_place_input" in view["state"]["values"]["event_place_block"] else "None"
+    tags = view["state"]["values"]["event_tag_block"]["event_tag_input"]["value"] if "event_tag_block" in view["state"]["values"] and "event_tag_input" in view["state"]["values"]["event_tag_block"] else ""
     tags_list = [tag.strip() for tag in tags.split(",") if tag.strip()] if tags else []
     try:
         start_time = datetime.strptime(start_time_str, "%Y-%m-%d %H:%M")
@@ -110,7 +121,7 @@ def handle_event_modal_submission(ack, body, client, view, logger):
         "attendees": set(), # 使用 set 來避免重複加入
         "start_time": start_time,
         "end_time": end_time,
-        "channel_id": view['private_metadata'] or 'C0xxxxxx', # 在這邊填入你希望發布的預設頻道ID
+        "channel_id": view['private_metadata'] or 'C099E6YLZT3', # 在這邊填入你希望發布的預設頻道ID
         "event_tag": tags_list
     }
     
@@ -154,14 +165,21 @@ def handle_event_modal_submission(ack, body, client, view, logger):
                     "style": "primary",
                     "action_id": "join_event_action",
                     "value": event_id
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "❌ 取消加入"},
+                    "style": "danger",
+                    "action_id": "leave_event_action",
+                    "value": event_id
                 }
                 ]
             }
-            
             ]
         )
         # 儲存訊息的時間戳，以便後續更新
         db["events"][event_id]["message_ts"] = result['ts']
+        db["events"][event_id]["blocks"] = result["message"]["blocks"] if "message" in result and "blocks" in result["message"] else result["blocks"]
     except Exception as e:
         logger.error(f"發送訊息失敗: {e}")
         return
@@ -191,7 +209,7 @@ def handle_join_event_action(ack, body, client, logger):
 
     user_id = body["user"]["id"]
     event_id = body["actions"][0]["value"]
-    event = db["events"].get(event_id)
+    event = db["events"][event_id]
 
     if not event:
         logger.warning("找不到對應的活動")
@@ -203,28 +221,70 @@ def handle_join_event_action(ack, body, client, logger):
 
     # 更新原始訊息，顯示最新的參加者名單
     attendees_text = ", ".join([f"<@{u}>" for u in event["attendees"]]) or "無"
-    
+    logger.info(f"event: {event}")
     try:
         client.chat_update(
             channel=event["channel_id"],
             ts=event["message_ts"],
-            blocks=[
-                event["blocks"][0], # 沿用舊的 block
-                {
-                    "type": "context",
-                    "elements": [
-                        {
-                            "type": "mrkdwn",
-                            "text": f"目前參加者：{attendees_text}"
-                        }
-                    ]
-                },
-                event["blocks"][2] # 沿用舊的 block
-            ]
+            blocks=(
+                event["blocks"][:1]
+                + [
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"目前參加者：{attendees_text}"
+                            }
+                        ]
+                    }
+                ]
+                + event["blocks"][2:]
+            )
         )
     except Exception as e:
         logger.error(f"更新訊息失敗: {e}")
 
+@app.action("leave_event_action")
+def handle_leave_event_action(ack, body, client, logger):
+    ack()
+
+    user_id = body["user"]["id"]
+    event_id = body["actions"][0]["value"]
+    event = db["events"][event_id]
+
+    if not event:
+        logger.warning("找不到對應的活動")
+        return
+
+    # 從參加者名單移除使用者
+    event["attendees"].discard(user_id)
+    logger.info(f"使用者 {user_id} 取消加入活動 {event_id}")
+
+    # 更新原始訊息，顯示最新的參加者名單
+    attendees_text = ", ".join([f"<@{u}>" for u in event["attendees"]]) or "無"
+    try:
+        client.chat_update(
+            channel=event["channel_id"],
+            ts=event["message_ts"],
+            blocks=(
+                event["blocks"][:1]
+                + [
+                    {
+                        "type": "context",
+                        "elements": [
+                            {
+                                "type": "mrkdwn",
+                                "text": f"目前參加者：{attendees_text}"
+                            }
+                        ]
+                    }
+                ]
+                + event["blocks"][2:]
+            )
+        )
+    except Exception as e:
+        logger.error(f"更新訊息失敗: {e}")
 # --- 排程執行的函式 ---
 def send_feedback_request(event_id, client, logger):
     event = db["events"].get(event_id)
