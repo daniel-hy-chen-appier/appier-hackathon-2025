@@ -5,3 +5,4 @@ torch
 pandas
 transformers
 python-dotenv
+pydrive
