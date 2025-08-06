@@ -14,6 +14,7 @@ import getopt
 import random
 import time
 import shutil
+import glob
 load_dotenv()
 retries = 4
 
@@ -68,6 +69,7 @@ class Drive_object(object):
                 return
             except:
                 if count == retries:                    
+                    return
                     raise
                 sleep = 2 ** count + random.uniform(0, 1)
                 time.sleep(sleep)
@@ -134,26 +136,63 @@ def help_message(bot_user_id):
     return f"""
 <@{bot_user_id}> help
 <@{bot_user_id}> analyze-user <target_user> [--private=*true*|false]
-<@{bot_user_id}> hangout-part [--private=*true*|false]
+<@{bot_user_id}> hangout-activity
 """
 
 
 
 def analyze_user(target:str, event_data:dict):
-    # event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
-    # data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
-    # event_data['say'](f'done! analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
-    with open("./data/personas/2024_happy_hour.json", 'rb') as f:
-        content_2024 = f.read()
-    with open("./data/personas/2025_happy_hour.json", 'rb') as f:
-        content_2025 = f.read()
+    event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
+    event_data['say'](f'analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    # with open("./data/personas/2024_happy_hour.json", 'rb') as f:
+    #     content_2024 = f.read()
+    # with open("./data/personas/2025_happy_hour.json", 'rb') as f:
+    #     content_2025 = f.read()
+    personas_dir = "./data/personas/"
+    all_personas_content = []
+
+    # Find all file paths in the directory ending with .json
+    json_files = glob.glob(os.path.join(personas_dir, '*.json'))
+
+    # Loop through each found file path
+    for file_path in json_files:
+        filename = os.path.basename(file_path)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # Add the content to our list, using the filename for context
+                content = f"--- Data from {filename} ---\n{f.read()}"
+                all_personas_content.append(content)
+        except IOError as e:
+            print(f"Could not read file {file_path}: {e}")
+    full_content_str = "\n\n".join(all_personas_content)
+    mrkdwn_rule = """
+Here are the mrkdwn syntax rules to follow:
+Bold: *text*
+Italic: _text_
+Strikethrough: ~text~
+Inline code: `code`
+Code block: ```code block```
+Blockquote: >quote
+Links: <url|Link Text>
+User Mentions: <@userid>
+Channel Links: <#channelid>
+& should be sent as &amp;
+< should be sent as &lt;
+> should be sent as &gt;
+"""
     prompt = f"""
-give me the information for member {target} and tell me how to talk to he/her for first time, 
-here is some data about all people
-intro of 2024 newcomer
-{content_2024}
-intro of 2025 newcomer
-{content_2025}
+tell me waht kind of person {target} is?
+show me his/her information like
+job role, team, habit, intrest, skill,  persona tags, people she coordinates with most frequently
+
+response me with mrkdwn format
+
+here is some data about all person
+{full_content_str}
+
+mrkdwn rule:
+{mrkdwn_rule}
     """
     
     response = gpt_response("gpt-4-turbo", [{"role":"user",
@@ -166,26 +205,60 @@ intro of 2025 newcomer
     # shutil.rmtree('./data')
     return f"{response}"
 
-def recommendation_user(group_size:int, party_discription:str, event_data:dict):
-    # event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
-    # data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
-    # event_data['say'](f'done! analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
-    with open("./data/personas/2024_happy_hour.json", 'rb') as f:
-        content_2024 = f.read()
-    with open("./data/personas/2025_happy_hour.json", 'rb') as f:
-        content_2025 = f.read()
+def recommendation_user(group_size:int, activity_discription:str, event_data:dict):
+    event_data['say'](
+        channel=event_data['channel_id'], 
+        user=event_data['user'],
+        text=f'loading data... please wait')
+    data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
+    event_data['say'](channel=event_data['channel_id'], 
+        user=event_data['user'],
+        text=f'done! analyzing...')
+    
+    personas_dir = "./data/personas/"
+    all_personas_content = []
 
+    # Find all file paths in the directory ending with .json
+    json_files = glob.glob(os.path.join(personas_dir, '*.json'))
+
+    # Loop through each found file path
+    for file_path in json_files:
+        filename = os.path.basename(file_path)
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                # Add the content to our list, using the filename for context
+                content = f"--- Data from {filename} ---\n{f.read()}"
+                all_personas_content.append(content)
+        except IOError as e:
+            print(f"Could not read file {file_path}: {e}")
+    full_content_str = "\n\n".join(all_personas_content)
+    mrkdwn_rule = """
+Here are the mrkdwn syntax rules to follow:
+Bold: *text*
+Italic: _text_
+Strikethrough: ~text~
+Inline code: `code`
+Code block: ```code block```
+Blockquote: >quote
+Links: <url|Link Text>
+User Mentions: <@userid>
+Channel Links: <#channelid>
+& should be sent as &amp;
+< should be sent as &lt;
+> should be sent as &gt;
+"""
     prompt = f"""
-recommendate atmost {group_size} members to join a party, you only need to list their name and give them a short reason, I will embed your response to a party notice, so don't reply anything else 
+recommendate atmost {group_size} members to join a activity, 
+you only need to list their name and give them a short reason, I will embed your response to a activity notice, so don't reply anything else 
 
-here is the party's detail:
-{party_discription}
+here is the activaty's detail:
+{activity_discription}
 
-here is some data about all people
-intro of 2024 newcomer:
-{content_2024}
-intro of 2025 newcomer:
-{content_2025}
+here is some data about all people:
+{full_content_str}
+
+mrkdwn rule:
+{mrkdwn_rule}
     """
     
     response = gpt_response("gpt-4-turbo", [{"role":"user",
@@ -197,7 +270,7 @@ intro of 2025 newcomer:
     # shutil.rmtree('./data')
     return response
 
-@app.view("hangout_party_modal")
+@app.view("hangout_activity_modal")
 def handle_modal_submission(ack, body, client, view, logger):
     ack() 
 
@@ -205,12 +278,12 @@ def handle_modal_submission(ack, body, client, view, logger):
     values = view["state"]["values"]
     
     group_size = values["group_size_block"]["group_size_input"]["value"]
-    party_description = values["description_block"]["description_input"]["value"]
+    activity_description = values["description_block"]["description_input"]["value"]
     channel_id = view["private_metadata"]
 
     if not group_size.isdigit():
         client.chat_postEphemeral(
-            channel=body["view"]["private_metadata"], 
+            channel=channel_id, 
             user=user,
             text="❌ Group size must be a number.",
         )
@@ -218,14 +291,14 @@ def handle_modal_submission(ack, body, client, view, logger):
 
     group_size = int(group_size)
 
-    recommendation = recommendation_user(group_size, party_description, {"user": user, "say": lambda *a, **k: None})
+    recommendation = recommendation_user(group_size, activity_description, {"user": user, "say": client.chat_postMessage, "channel_id":channel_id})
 
     client.chat_postMessage(
-        channel=channel_id,  # 或你可以設定為 body['view']['private_metadata']
-        text=f"<@{user}> 🎉 Here's a party plan for {group_size} people:\n*{party_description}*\nRecommended members:\n{recommendation}"
+        channel=channel_id, 
+        text=f"<@{user}> 🎉 Here's a activity plan for {group_size} people:\n*{activity_description}*\nRecommended members:\n{recommendation}"
     )
-@app.action("open_party_modal")
-def open_party_modal(ack, body, client):
+@app.action("open_activity_modal")
+def open_activity_modal(ack, body, client):
     ack()
     trigger_id = body.get("trigger_id")
     channel_id = body["channel"]["id"]
@@ -234,9 +307,9 @@ def open_party_modal(ack, body, client):
         trigger_id=trigger_id,
         view={
             "type": "modal",
-            "callback_id": "hangout_party_modal",
+            "callback_id": "hangout_activity_modal",
             "private_metadata": channel_id,
-            "title": {"type": "plain_text", "text": "Create Hangout Party"},
+            "title": {"type": "plain_text", "text": "Create Hangout activity"},
             "submit": {"type": "plain_text", "text": "Submit"},
             "close": {"type": "plain_text", "text": "Cancel"},
             "blocks": [
@@ -262,7 +335,7 @@ def open_party_modal(ack, body, client):
                     },
                     "label": {
                         "type": "plain_text",
-                        "text": "Party Description"
+                        "text": "activity Description"
                     }
                 }
             ]
@@ -280,11 +353,11 @@ def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebCl
     text_arr.remove(f"<@{bot_user_id}>")
     private = True
     if len(text_arr) == 0 or text_arr[0] == 'help': # show help
+        private = False
         reply_text = f"<@{user}> Here are the available commands:\n{help_message(bot_user_id)}"
     elif text_arr[0] == "analyze-user":
         opts, args = getopt.getopt(text_arr[1:], 'hp:', ['help', 'private='])
         help_msg = f'<@{user}> Here is the help for analyze-user:\n<@{bot_user_id}> analyze-user <target_user> [--private=*true*|false]'
-        logging.info(f'opts:{opts}\nargs:{args}')
         if args:
             reply_text = analyze_user(args[0], {"say":say, "thread_ts":thread_ts, "user":user})
         else:
@@ -299,14 +372,14 @@ def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebCl
                     private = False
                 else:
                     reply_text = help_msg
-    elif text_arr[0] == "hangout-party":
-        say(text='click button to create a party',
+    elif text_arr[0] == "hangout-activity":
+        say(text='click button to create a activity',
             blocks=[
                 {
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": "click button to create a party👇"
+                        "text": "click button to create a activity👇"
                     }
                 },
                 {
@@ -314,37 +387,72 @@ def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebCl
                     "elements": [
                         {
                             "type": "button",
-                            "text": {"type": "plain_text", "text": "create party"},
-                            "action_id": "open_party_modal"
+                            "text": {"type": "plain_text", "text": "create activity"},
+                            "action_id": "open_activity_modal"
                         }
                     ]
                 }
             ])
         return
-    logging.info(f'event: {event}')
-    logging.info(f'input text: {text}')
+    else:
+        private = False
+        reply_text = f"<@{user}> Here are the available commands:\n{help_message(bot_user_id)}"
     # Reply in thread
     if client:
         if private:
             client.chat_postEphemeral(
                 channel=event["channel"],
                 user=user,
-                text=reply_text,
+                text="private reply",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": reply_text
+                        }
+                    }
+                ],
                 thread_ts=thread_ts,
                 mrkdwn=True
             )
         else:
             client.chat_postMessage(
                 channel=event["channel"],
-                text=reply_text,
+                text="here is the reply",
+                blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": reply_text
+                        }
+                    }
+                ],
                 thread_ts=thread_ts,
                 mrkdwn=True
             )
     else:
         if private:
-            say(reply_text, thread_ts=thread_ts, mrkdwn=True, ephemeral_user=user)
+            say("private reply",blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": reply_text
+                        }
+                    }
+                ], thread_ts=thread_ts, mrkdwn=True, ephemeral_user=user)
         else:
-            say(reply_text, thread_ts=thread_ts, mrkdwn=True)
+            say("here is the reply:",blocks=[
+                    {
+                        "type": "section",
+                        "text": {
+                            "type": "mrkdwn",
+                            "text": reply_text
+                        }
+                    }
+                ], thread_ts=thread_ts, mrkdwn=True)
 
 # Start the bot
 if __name__ == "__main__":
