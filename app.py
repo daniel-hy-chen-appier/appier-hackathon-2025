@@ -134,48 +134,143 @@ def help_message(bot_user_id):
     return f"""
 <@{bot_user_id}> help
 <@{bot_user_id}> analyze-user <target_user> [--private=*true*|false]
-<@{bot_user_id}> hangout-party <group_size> <party_discription> [--private=*true*|false]
+<@{bot_user_id}> hangout-part [--private=*true*|false]
 """
 
 
 
 def analyze_user(target:str, event_data:dict):
-    event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    # event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
     # data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
-    event_data['say'](f'done! analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    # event_data['say'](f'done! analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
     with open("./data/personas/2024_happy_hour.json", 'rb') as f:
         content_2024 = f.read()
     with open("./data/personas/2025_happy_hour.json", 'rb') as f:
         content_2025 = f.read()
+    prompt = f"""
+give me the information for member {target} and tell me how to talk to he/her for first time, 
+here is some data about all people
+intro of 2024 newcomer
+{content_2024}
+intro of 2025 newcomer
+{content_2025}
+    """
     
     response = gpt_response("gpt-4-turbo", [{"role":"user",
                                                     "content":[
                                                         {"type":"text",
-                                                         "text":f"""give me the information for member {target} and tell me how to talk to he/her for first time, 
-                                                         here is some data about all people
-                                                         intro of 2024 newcomer
-                                                         {content_2024}
-                                                         intro of 2025 newcomer
-                                                         {content_2025}
-                                                         """},
+                                                         "text":prompt},
                                                         ]
                                                     }])
 
     # shutil.rmtree('./data')
-    return f"test for {target}, response:{response}"
+    return f"{response}"
 
 def recommendation_user(group_size:int, party_discription:str, event_data:dict):
-    event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
-    data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
-    event_data['say'](f'done! analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    # event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    # data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
+    # event_data['say'](f'done! analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
+    with open("./data/personas/2024_happy_hour.json", 'rb') as f:
+        content_2024 = f.read()
+    with open("./data/personas/2025_happy_hour.json", 'rb') as f:
+        content_2025 = f.read()
+
+    prompt = f"""
+recommendate atmost {group_size} members to join a party, you only need to list their name and give them a short reason, I will embed your response to a party notice, so don't reply anything else 
+
+here is the party's detail:
+{party_discription}
+
+here is some data about all people
+intro of 2024 newcomer:
+{content_2024}
+intro of 2025 newcomer:
+{content_2025}
+    """
     
+    response = gpt_response("gpt-4-turbo", [{"role":"user",
+                                                    "content":[
+                                                        {"type":"text",
+                                                         "text":prompt},
+                                                        ]
+                                                    }])
+    # shutil.rmtree('./data')
+    return response
+
+@app.view("hangout_party_modal")
+def handle_modal_submission(ack, body, client, view, logger):
+    ack() 
+
+    user = body["user"]["id"]
+    values = view["state"]["values"]
     
-    
-    shutil.rmtree('./data')
-    return []
-    
+    group_size = values["group_size_block"]["group_size_input"]["value"]
+    party_description = values["description_block"]["description_input"]["value"]
+    channel_id = view["private_metadata"]
+
+    if not group_size.isdigit():
+        client.chat_postEphemeral(
+            channel=body["view"]["private_metadata"], 
+            user=user,
+            text="❌ Group size must be a number.",
+        )
+        return
+
+    group_size = int(group_size)
+
+    recommendation = recommendation_user(group_size, party_description, {"user": user, "say": lambda *a, **k: None})
+
+    client.chat_postMessage(
+        channel=channel_id,  # 或你可以設定為 body['view']['private_metadata']
+        text=f"<@{user}> 🎉 Here's a party plan for {group_size} people:\n*{party_description}*\nRecommended members:\n{recommendation}"
+    )
+@app.action("open_party_modal")
+def open_party_modal(ack, body, client):
+    ack()
+    trigger_id = body.get("trigger_id")
+    channel_id = body["channel"]["id"]
+
+    client.views_open(
+        trigger_id=trigger_id,
+        view={
+            "type": "modal",
+            "callback_id": "hangout_party_modal",
+            "private_metadata": channel_id,
+            "title": {"type": "plain_text", "text": "Create Hangout Party"},
+            "submit": {"type": "plain_text", "text": "Submit"},
+            "close": {"type": "plain_text", "text": "Cancel"},
+            "blocks": [
+                {
+                    "type": "input",
+                    "block_id": "group_size_block",
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "group_size_input"
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": "Group Size"
+                    }
+                },
+                {
+                    "type": "input",
+                    "block_id": "description_block",
+                    "element": {
+                        "type": "plain_text_input",
+                        "action_id": "description_input",
+                        "multiline": True
+                    },
+                    "label": {
+                        "type": "plain_text",
+                        "text": "Party Description"
+                    }
+                }
+            ]
+        }
+    )
+
 @app.event("app_mention")
-def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebClient=None) -> None:
+def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebClient) -> None:
     bot_user_id = app.client.auth_test()["user_id"]
     # parse command
     user = event["user"]
@@ -183,10 +278,6 @@ def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebCl
     thread_ts = event.get("thread_ts") or event.get("ts")
     text_arr = text.split()
     text_arr.remove(f"<@{bot_user_id}>")
-    # for idx, text in enumerate( text_arr):
-    #     if "=" in text:
-    #         key, value = text.split("=", 1)
-    #         text_arr[idx] = {key:value}
     private = True
     if len(text_arr) == 0 or text_arr[0] == 'help': # show help
         reply_text = f"<@{user}> Here are the available commands:\n{help_message(bot_user_id)}"
@@ -209,29 +300,27 @@ def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebCl
                 else:
                     reply_text = help_msg
     elif text_arr[0] == "hangout-party":
-        opts, args = getopt.getopt(text_arr[1:], 'hp:', ['help', 'private='])
-        help_msg = f'<@{user}> Here is the help for analyze-user:\n<@{bot_user_id}> hangout-party <group_size> <party_discription> [--private=*true*|false]'
-        if len(args) == 2:
-            if not args[0].isdigit():
-                reply_text = help_msg
-            else:
-                group_size = int(args[0])
-                party_description = args[1]
-                recondation = recommendation_user(group_size, party_description, {"say":say, "thread_ts":thread_ts, "user":user})
-                reply_text = f"<@{user}> Creating a hangout party for {group_size} people: {party_description}\nreconndation these prople:\n{' '.join(recondation)}"
-                
-        else:
-            reply_text = help_msg
-        for opt_name, opt_value in opts:
-            if opt_name in ('-h', '--help'):
-                reply_text = help_msg
-            elif opt_name in ('-p', '--private'):
-                if opt_value.lower() in ["t","true"]:
-                    private = True
-                elif opt_value.lower() in ["f","false"]:
-                    private = False
-                else:
-                    reply_text = help_msg
+        say(text='click button to create a party',
+            blocks=[
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": "click button to create a party👇"
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {"type": "plain_text", "text": "create party"},
+                            "action_id": "open_party_modal"
+                        }
+                    ]
+                }
+            ])
+        return
     logging.info(f'event: {event}')
     logging.info(f'input text: {text}')
     # Reply in thread
