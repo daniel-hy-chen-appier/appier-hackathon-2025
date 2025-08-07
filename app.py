@@ -135,7 +135,7 @@ def gpt_response(model:str, messages:str):
 def help_message(bot_user_id):
     return f"""
 <@{bot_user_id}> help
-<@{bot_user_id}> analyze-user <target_user> [--private=*true*|false]
+<@{bot_user_id}> analyze-user [--private=*true*|false] <target_user>
 <@{bot_user_id}> hangout-activity
 """
 
@@ -357,9 +357,9 @@ def handle_app_mention(event: dict, say: Say, client: slack_sdk.web.client.WebCl
         reply_text = f"<@{user}> Here are the available commands:\n{help_message(bot_user_id)}"
     elif text_arr[0] == "analyze-user":
         opts, args = getopt.getopt(text_arr[1:], 'hp:', ['help', 'private='])
-        help_msg = f'<@{user}> Here is the help for analyze-user:\n<@{bot_user_id}> analyze-user <target_user> [--private=*true*|false]'
+        help_msg = f'<@{user}> Here is the help for analyze-user:\n<@{bot_user_id}> analyze-user [--private=*true*|false] <target_user>'
         if args:
-            reply_text = analyze_user(args[0], {"say":say, "thread_ts":thread_ts, "user":user})
+            reply_text = analyze_user(' '.join(args), {"say":say, "thread_ts":thread_ts, "user":user})
         else:
             reply_text = help_msg
         for opt_name, opt_value in opts:
