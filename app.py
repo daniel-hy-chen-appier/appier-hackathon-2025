@@ -15,8 +15,9 @@ import random
 import time
 import shutil
 import glob
+import json
 load_dotenv()
-retries = 4
+retries = 1
 
 def authorize_drive():
     gauth = GoogleAuth()
@@ -143,13 +144,13 @@ def help_message(bot_user_id):
 
 def analyze_user(target:str, event_data:dict):
     event_data['say'](f'loading data... please wait', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
-    data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
+    # data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
     event_data['say'](f'analyzing...', thread_ts=event_data['thread_ts'], mrkdwn=True, ephemeral_user=event_data['user'])
     # with open("./data/personas/2024_happy_hour.json", 'rb') as f:
     #     content_2024 = f.read()
     # with open("./data/personas/2025_happy_hour.json", 'rb') as f:
     #     content_2025 = f.read()
-    personas_dir = "./data/personas/"
+    personas_dir = "./data/personas/analyze_person"
     all_personas_content = []
 
     # Find all file paths in the directory ending with .json
@@ -161,11 +162,14 @@ def analyze_user(target:str, event_data:dict):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 # Add the content to our list, using the filename for context
-                content = f"--- Data from {filename} ---\n{f.read()}"
+                jsonstr = f.read()
+                jsondata = json.loads(jsonstr)
+                jsonstr = json.dumps(jsondata,  separators=(',', ':'))
+                content = f"--- Data from {filename} ---\n{jsonstr}\n"
                 all_personas_content.append(content)
         except IOError as e:
             print(f"Could not read file {file_path}: {e}")
-    full_content_str = "\n\n".join(all_personas_content)
+    full_content_str = "".join(all_personas_content)
     mrkdwn_rule = """
 Here are the mrkdwn syntax rules to follow:
 Bold: *text*
@@ -210,12 +214,12 @@ def recommendation_user(group_size:int, activity_discription:str, event_data:dic
         channel=event_data['channel_id'], 
         user=event_data['user'],
         text=f'loading data... please wait')
-    data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
+    # data.download_folder(os.environ["DATA_FOLDER_ID"], local_path='./data/')
     event_data['say'](channel=event_data['channel_id'], 
         user=event_data['user'],
         text=f'done! analyzing...')
     
-    personas_dir = "./data/personas/"
+    personas_dir = "./data/personas/self_intro_revised"
     all_personas_content = []
 
     # Find all file paths in the directory ending with .json
@@ -227,7 +231,10 @@ def recommendation_user(group_size:int, activity_discription:str, event_data:dic
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 # Add the content to our list, using the filename for context
-                content = f"--- Data from {filename} ---\n{f.read()}"
+                jsonstr = f.read()
+                jsondata = json.loads(jsonstr)
+                jsonstr = json.dumps(jsondata,  separators=(',', ':'))
+                content = f"--- Data from {filename} ---\n{jsonstr}\n"
                 all_personas_content.append(content)
         except IOError as e:
             print(f"Could not read file {file_path}: {e}")
@@ -249,16 +256,15 @@ Channel Links: <#channelid>
 """
     prompt = f"""
 recommendate atmost {group_size} members to join a activity, 
-you only need to list their name and give them a short reason, I will embed your response to a activity notice, so don't reply anything else 
+these members should fit this activity as possible as well
+you only need to list their name and give them a short reason, 
+I will embed your response to a activity notice, so don't reply anything else 
 
 here is the activaty's detail:
 {activity_discription}
 
 here is some data about all people:
 {full_content_str}
-
-mrkdwn rule:
-{mrkdwn_rule}
     """
     
     response = gpt_response("gpt-4-turbo", [{"role":"user",
